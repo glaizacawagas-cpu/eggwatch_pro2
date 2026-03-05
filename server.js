@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = 3000;
+const IP = '192.168.1.40'; // Change this to your desired IP
 
 // File MIME types
 const mimeTypes = {
@@ -110,7 +111,7 @@ function handleApi(req, res, pathname) {
             break;
 
         case 'logs':
-            const limit = parseInt(new URL(req.url, 'http://localhost').searchParams.get('limit')) || 20;
+            const limit = parseInt(new URL(req.url, `http://localhost`).searchParams.get('limit')) || 20;
             const logReadings = (db.sensor_readings || []).slice(-limit);
             res.json(logReadings.reverse());
             break;
@@ -199,10 +200,10 @@ const server = http.createServer((req, res) => {
     });
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, IP, () => {
     console.log(`\n🥚 EggWatch Pro Server running at:`);
     console.log(`   Local:   http://localhost:${PORT}`);
-    console.log(`   Network: http://192.168.1.49:${PORT}`);
-    console.log(`\nMake sure your ESP32 points to: http://192.168.1.49:${PORT}/api`);
+    console.log(`   Network: http://${IP}:${PORT}`);
+    console.log(`\nMake sure your ESP32 points to: http://${IP}:${PORT}/api`);
     console.log(`\nPress Ctrl+C to stop\n`);
 });

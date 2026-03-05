@@ -6,11 +6,10 @@
 
 const API = (() => {
   // ── Configuration ──────────────────────────────────────────
-  // For local server: use localhost:3000
-  // For ESP32 direct: use 192.168.1.100
+  // For local server: use 192.168.1.40:3000
   
   let config = {
-    ip:           localStorage.getItem('esp32_ip')   || 'localhost',
+    ip:           localStorage.getItem('esp32_ip')   || '192.168.1.40',
     port:         localStorage.getItem('esp32_port') || '3000',
     pollInterval: parseInt(localStorage.getItem('poll_interval') || '5', 10),
     // Use real API, not demo mode
