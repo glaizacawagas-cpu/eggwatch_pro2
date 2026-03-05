@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EggWatch Pro — Smart Incubator Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- ===== TOP NAVBAR ===== -->
+  <header class="topnav" id="topnav">
+    <div class="topnav-brand">
+      <i class="fa-solid fa-egg"></i>
+      <span class="brand-text">EggWatch<span class="accent">Pro</span></span>
+    </div>
+
+    <!-- Desktop anchor nav -->
+    <nav class="topnav-links" id="topnavLinks">
+      <a href="#section-monitoring" class="nav-link active">
+        <i class="fa-solid fa-gauge-high"></i> Dashboard
+      </a>
+      <a href="#section-charts" class="nav-link">
+        <i class="fa-solid fa-chart-line"></i> Charts
+      </a>
+      <a href="#section-logs" class="nav-link">
+        <i class="fa-solid fa-list-ul"></i> Logs
+      </a>
+      <a href="#section-history" class="nav-link">
+        <i class="fa-solid fa-clock-rotate-left"></i> History
+      </a>
+      <a href="#section-settings" class="nav-link">
+        <i class="fa-solid fa-sliders"></i> Settings
+      </a>
+    </nav>
+
+    <div class="topnav-actions">
+      <!-- Connection status -->
+      <div class="connection-status">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">Connecting…</span>
+      </div>
+      <span class="last-updated-nav">Updated: <span id="lastUpdated">—</span></span>
+      <button class="btn btn-icon" id="refreshBtn" title="Refresh now">
+        <i class="fa-solid fa-rotate-right"></i>
+      </button>
+      <!-- Alert bell -->
+      <div class="alert-bell" id="alertBell">
+        <i class="fa-solid fa-bell"></i>
+        <span class="alert-badge" id="alertBadge" style="display:none">0</span>
+      </div>
+      <!-- Theme toggle -->
+      <button class="btn btn-icon" id="themeToggle" aria-label="Toggle theme">
+        <i class="fa-solid fa-moon" id="themeIcon"></i>
+      </button>
+      <!-- Mobile hamburger -->
+      <button class="btn btn-icon mobile-menu-btn" id="mobileMenuBtn" aria-label="Menu">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Mobile nav drawer -->
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#section-monitoring" class="mobile-nav-link" data-close>
+      <i class="fa-solid fa-gauge-high"></i> Dashboard
+    </a>
+    <a href="#section-charts" class="mobile-nav-link" data-close>
+      <i class="fa-solid fa-chart-line"></i> Charts
+    </a>
+    <a href="#section-logs" class="mobile-nav-link" data-close>
+      <i class="fa-solid fa-list-ul"></i> Logs
+    </a>
+    <a href="#section-history" class="mobile-nav-link" data-close>
+      <i class="fa-solid fa-clock-rotate-left"></i> History
+    </a>
+    <a href="#section-settings" class="mobile-nav-link" data-close>
+      <i class="fa-solid fa-sliders"></i> Settings
+    </a>
+  </div>
+  <div class="overlay" id="overlay"></div>
+
+  <!-- ALERT BANNER -->
+  <div class="alert-banner" id="alertBanner" style="display:none">
+    <div class="alert-banner-inner" id="alertBannerInner"></div>
+    <button class="alert-close" id="alertClose"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <!-- ===== SINGLE SCROLLABLE PAGE ===== -->
+  <main class="main-content">
+
+    <!-- ── SECTION 1: Real-Time Monitoring ── -->
+    <section id="section-monitoring" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-satellite-dish"></i> Real-Time Monitoring</h2>
+        <span class="badge badge-live"><i class="fa-solid fa-circle"></i> LIVE</span>
+      </div>
+
+      <div class="cards-grid monitoring-grid">
+
+        <!-- Temperature Card -->
+        <div class="card card-temperature" id="tempCard">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-temperature-half"></i> Temperature</span>
+            <span class="card-badge" id="tempStatus">—</span>
+          </div>
+          <div class="card-body">
+            <div class="big-value" id="tempValue">—</div>
+            <div class="big-unit">°C</div>
+          </div>
+          <div class="card-footer">
+            <div class="range-bar">
+              <div class="range-fill" id="tempRangeFill"></div>
+              <div class="range-marker" id="tempMarker"></div>
+            </div>
+            <div class="range-labels">
+              <span>20°C</span><span>Safe: 37–38°C</span><span>42°C</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Humidity Card -->
+        <div class="card card-humidity" id="humCard">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-droplet"></i> Humidity</span>
+            <span class="card-badge" id="humStatus">—</span>
+          </div>
+          <div class="card-body">
+            <div class="big-value" id="humValue">—</div>
+            <div class="big-unit">%</div>
+          </div>
+          <div class="card-footer">
+            <div class="range-bar">
+              <div class="range-fill" id="humRangeFill"></div>
+              <div class="range-marker" id="humMarker"></div>
+            </div>
+            <div class="range-labels">
+              <span>0%</span><span>Safe: 50–65%</span><span>100%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Motor Status Card -->
+        <div class="card card-motor" id="motorCard">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-rotate"></i> Egg Turner</span>
+            <span class="card-badge" id="motorStatus">—</span>
+          </div>
+          <div class="card-body motor-body">
+            <div class="motor-icon" id="motorIcon">
+              <i class="fa-solid fa-egg"></i>
+            </div>
+            <div class="motor-info">
+              <div class="motor-state" id="motorState">Idle</div>
+              <div class="motor-turns">
+                <span class="turns-label">Turns today</span>
+                <span class="turns-value" id="turnsToday">0</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <div class="next-turn-label">Next turn in:</div>
+            <div class="countdown" id="countdown">—</div>
+          </div>
+        </div>
+
+        <!-- Fan Status Card -->
+        <div class="card card-fan" id="fanCard">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-fan"></i> Fan Control</span>
+            <span class="card-badge" id="fanStatus">—</span>
+          </div>
+          <div class="card-body fan-body">
+            <div class="fan-icon" id="fanIcon">
+              <i class="fa-solid fa-fan"></i>
+            </div>
+            <div class="fan-info">
+              <div class="fan-state" id="fanState">Off</div>
+              <div class="fan-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="fanToggle" />
+                  <span class="toggle-slider"></span>
+                </label>
+                <span class="toggle-label" id="toggleLabel">Turn Fan On</span>
+              </div>
+            </div>
+          </div>
+          <div class="card-footer">
+            <button class="btn btn-sm btn-primary" id="fanToggleBtn">
+              <i class="fa-solid fa-power-off"></i> Toggle Fan
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Stats Card -->
+        <div class="card card-stats">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-chart-simple"></i> Today's Stats</span>
+          </div>
+          <div class="stats-list">
+            <div class="stat-item">
+              <span class="stat-label">Avg Temperature</span>
+              <span class="stat-value" id="avgTemp">—</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Avg Humidity</span>
+              <span class="stat-value" id="avgHum">—</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Total Turns</span>
+              <span class="stat-value" id="totalTurns">—</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Alerts Today</span>
+              <span class="stat-value" id="alertsToday">—</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── SECTION 2: Egg Turning Control ── -->
+    <section id="section-control" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-sliders"></i> Egg Turning Control</h2>
+      </div>
+
+      <div class="cards-grid control-grid">
+        <div class="card card-control">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-gear"></i> Schedule Settings</span>
+          </div>
+          <div class="control-form">
+            <div class="form-group">
+              <label for="turnsPerDay">Turns per day</label>
+              <input type="number" id="turnsPerDay" min="1" max="24" value="8" placeholder="e.g. 8" />
+            </div>
+            <div class="form-group">
+              <label for="turnInterval">Interval (hours)</label>
+              <input type="number" id="turnInterval" min="0.5" max="24" step="0.5" value="3" placeholder="e.g. 3" />
+            </div>
+            <button class="btn btn-primary" id="saveScheduleBtn">
+              <i class="fa-solid fa-floppy-disk"></i> Save Schedule
+            </button>
+          </div>
+          <div class="schedule-preview" id="schedulePreview">
+            <div class="schedule-title">Calculated Schedule</div>
+            <div class="schedule-times" id="scheduleTimes"></div>
+          </div>
+        </div>
+
+        <div class="card card-manual">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-hand"></i> Manual Control</span>
+          </div>
+          <div class="manual-controls">
+            <button class="btn btn-success" id="manualTurnBtn">
+              <i class="fa-solid fa-rotate"></i> Turn Now
+            </button>
+            <button class="btn btn-warning" id="pauseScheduleBtn">
+              <i class="fa-solid fa-pause"></i> Pause Schedule
+            </button>
+            <div class="manual-status" id="manualStatus"></div>
+          </div>
+          <div class="threshold-settings">
+            <div class="threshold-title">Alert Thresholds</div>
+            <div class="threshold-row">
+              <label>Temp Min (°C)</label>
+              <input type="number" id="tempMin" value="36" step="0.1" />
+            </div>
+            <div class="threshold-row">
+              <label>Temp Max (°C)</label>
+              <input type="number" id="tempMax" value="38.5" step="0.1" />
+            </div>
+            <div class="threshold-row">
+              <label>Humidity Min (%)</label>
+              <input type="number" id="humMin" value="50" />
+            </div>
+            <div class="threshold-row">
+              <label>Humidity Max (%)</label>
+              <input type="number" id="humMax" value="65" />
+            </div>
+            <button class="btn btn-secondary" id="saveThresholdsBtn">
+              <i class="fa-solid fa-check"></i> Apply Thresholds
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 3: Charts ── -->
+    <section id="section-charts" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-chart-line"></i> Temperature &amp; Humidity Charts</h2>
+        <div class="chart-controls">
+          <select id="chartRange" class="select-input">
+            <option value="1h">Last 1 Hour</option>
+            <option value="6h" selected>Last 6 Hours</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="card-header">
+          <span class="card-label"><i class="fa-solid fa-temperature-half"></i> Temperature Over Time</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="tempChart"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="card-header">
+          <span class="card-label"><i class="fa-solid fa-droplet"></i> Humidity Over Time</span>
+        </div>
+        <div class="chart-container">
+          <canvas id="humChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 4: Recent Logs ── -->
+    <section id="section-logs" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-list-ul"></i> Data Logs</h2>
+        <div class="section-header-actions">
+          <span class="badge badge-info">Auto-updates every 15 min</span>
+          <button class="btn btn-sm btn-secondary" id="refreshLogsBtn">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="logs-toolbar">
+          <span class="logs-count">Showing latest <strong>20</strong> records</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="logsTable">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Temperature (°C)</th>
+                <th>Humidity (%)</th>
+                <th>Egg Turn</th>
+              </tr>
+            </thead>
+            <tbody id="logsBody">
+              <tr><td colspan="4" class="empty-row">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 5: Full History ── -->
+    <section id="section-history" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-clock-rotate-left"></i> Full History</h2>
+        <button class="btn btn-success" id="exportCsvBtn">
+          <i class="fa-solid fa-file-csv"></i> Export CSV
+        </button>
+      </div>
+
+      <!-- Filters -->
+      <div class="card filter-card">
+        <div class="filter-grid">
+          <div class="form-group">
+            <label for="filterDate">Filter by Date</label>
+            <input type="date" id="filterDate" class="input-field" />
+          </div>
+          <div class="form-group">
+            <label>Temperature Range (°C)</label>
+            <div class="range-inputs">
+              <input type="number" id="filterTempMin" placeholder="Min" class="input-field" step="0.1" />
+              <span>—</span>
+              <input type="number" id="filterTempMax" placeholder="Max" class="input-field" step="0.1" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Humidity Range (%)</label>
+            <div class="range-inputs">
+              <input type="number" id="filterHumMin" placeholder="Min" class="input-field" />
+              <span>—</span>
+              <input type="number" id="filterHumMax" placeholder="Max" class="input-field" />
+            </div>
+          </div>
+          <div class="form-group filter-actions">
+            <button class="btn btn-primary" id="applyFilterBtn">
+              <i class="fa-solid fa-filter"></i> Apply Filters
+            </button>
+            <button class="btn btn-secondary" id="clearFilterBtn">
+              <i class="fa-solid fa-xmark"></i> Clear
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="logs-toolbar">
+          <span class="logs-count" id="historyCount">All records</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="data-table" id="historyTable">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Temperature (°C)</th>
+                <th>Humidity (%)</th>
+                <th>Egg Turn</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody">
+              <tr><td colspan="4" class="empty-row">Loading…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="historyPagination"></div>
+      </div>
+    </section>
+
+    <!-- ── SECTION 6: Settings ── -->
+    <section id="section-settings" class="content-section">
+      <div class="section-header">
+        <h2><i class="fa-solid fa-sliders"></i> Settings</h2>
+      </div>
+
+      <div class="cards-grid settings-grid">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-server"></i> ESP32 Connection</span>
+          </div>
+          <div class="settings-form">
+            <div class="form-group">
+              <label for="esp32Ip">ESP32 IP Address</label>
+              <input type="text" id="esp32Ip" class="input-field" placeholder="e.g. 192.168.1.100" value="192.168.1.100" />
+            </div>
+            <div class="form-group">
+              <label for="esp32Port">Port</label>
+              <input type="number" id="esp32Port" class="input-field" placeholder="80" value="80" />
+            </div>
+            <div class="form-group">
+              <label for="pollInterval">Poll Interval (seconds)</label>
+              <input type="number" id="pollInterval" class="input-field" min="1" max="60" value="5" />
+            </div>
+            <button class="btn btn-primary" id="saveConnectionBtn">
+              <i class="fa-solid fa-plug"></i> Save &amp; Connect
+            </button>
+            <div class="connection-test" id="connectionTest"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-bell"></i> Notification Settings</span>
+          </div>
+          <div class="settings-form">
+            <div class="toggle-row">
+              <label>Temperature Alerts</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="tempAlertToggle" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <label>Humidity Alerts</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="humAlertToggle" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <label>Egg Turn Failure Alerts</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="turnAlertToggle" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="toggle-row">
+              <label>Sound Notifications</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="soundToggle" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-palette"></i> Appearance</span>
+          </div>
+          <div class="settings-form">
+            <div class="toggle-row">
+              <label>Dark Mode</label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="darkModeToggle" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Accent Color</label>
+              <div class="color-swatches">
+                <button class="swatch active" data-color="amber" style="background:#f59e0b"></button>
+                <button class="swatch" data-color="green" style="background:#22c55e"></button>
+                <button class="swatch" data-color="blue" style="background:#3b82f6"></button>
+                <button class="swatch" data-color="purple" style="background:#a855f7"></button>
+                <button class="swatch" data-color="red" style="background:#ef4444"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-label"><i class="fa-solid fa-info-circle"></i> System Info</span>
+          </div>
+          <div class="info-list">
+            <div class="info-item">
+              <span>Dashboard Version</span><span>v1.0.0</span>
+            </div>
+            <div class="info-item">
+              <span>ESP32 Firmware</span><span id="firmwareVer">—</span>
+            </div>
+            <div class="info-item">
+              <span>Uptime</span><span id="systemUptime">—</span>
+            </div>
+            <div class="info-item">
+              <span>Total Logs</span><span id="totalLogs">—</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ALERTS PANEL (slide-in) -->
+  <div class="alerts-panel" id="alertsPanel">
+    <div class="alerts-panel-header">
+      <h3><i class="fa-solid fa-bell"></i> Alerts</h3>
+      <button id="closeAlertsPanel"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="alerts-list" id="alertsList">
+      <div class="no-alerts">No active alerts</div>
+    </div>
+    <div class="alerts-panel-footer">
+      <button class="btn btn-sm btn-secondary" id="clearAllAlerts">Clear All</button>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <script src="js/api.js"></script>
+  <script src="js/alerts.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/logs.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
