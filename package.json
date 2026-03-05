@@ -1,0 +1,12 @@
+{
+  "name": "eggwatch-pro",
+  "version": "1.0.0",
+  "description": "Smart Egg Incubator Controller Web App",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
