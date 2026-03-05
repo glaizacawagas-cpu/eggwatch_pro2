@@ -132,12 +132,16 @@ const API = (() => {
    */
   async function getStatus() {
     if (config.demoMode) {
+      console.log('[API] Demo mode - returning simulated data');
       return demo.generateReading();
     }
     try {
-      return await fetchJson('/api/status');
+      console.log('[API] Fetching from:', baseUrl() + '/api/status');
+      const data = await fetchJson('/api/status');
+      console.log('[API] Received data:', data);
+      return data;
     } catch (e) {
-      console.warn('ESP32 not connected, falling back to demo mode:', e.message);
+      console.warn('[API] ESP32 not connected, falling back to demo mode:', e.message);
       return demo.generateReading();
     }
   }
