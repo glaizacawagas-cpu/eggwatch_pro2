@@ -1,7 +1,7 @@
 /*
  * ============================================================
- *  EggWatch Pro - ESP32 Firmware v2
- *  Complete Integration with Web App
+ *  EggWatch Pro - ESP32 Firmware
+ *  For Local Server (192.168.1.40:3000)
  * ============================================================
  *  Hardware: ESP32
  *  Sensor: AHT30 (I2C - SDA=21, SCL=22)
@@ -9,10 +9,10 @@
  * ============================================================
  * 
  *  INSTRUCTIONS:
- *  1. Change WiFi SSID and Password below
- *  2. Change SERVER_URL to your Vercel URL (after deployment)
+ *  1. Change WiFi SSID and Password
+ *  2. Change SERVER_URL to your server IP
  *  3. Upload to ESP32
- *  4. Open Serial Monitor (115200) to see debug output
+ *  4. Open Serial Monitor (115200)
  * ============================================================
  */
 
@@ -21,14 +21,12 @@
 #include <Wire.h>
 #include <ArduinoJson.h>
 
-// ============== CONFIGURATION - CHANGE THESE ==============
+// ============== CONFIGURATION ==============
 const char* ssid = "YOUR_WIFI_SSID";          // Your WiFi name
 const char* password = "YOUR_WIFI_PASSWORD";  // Your WiFi password
 
-// Server URL - Replace with your Vercel URL after deployment
-// Example: "https://eggwatch-pro2.vercel.app/api"
-// For local testing: "http://192.168.1.100/eggwatch_pro/api"
-const char* serverUrl = "https://eggwatch-pro2.vercel.app/api";
+// Server URL - Change to your server IP
+const char* serverUrl = "http://192.168.1.40:3000/api";
 
 // Device name
 const char* deviceName = "EggWatch-ESP32";
@@ -50,9 +48,9 @@ const float TEMP_HEATER_OFF = 37.5f;
 const float TEMP_FAN_ON     = 38.0f;
 const float TEMP_FAN_OFF    = 37.0f;
 
-const unsigned long TURNER_RUN_TIME = 10000UL;  // 10 seconds
+const unsigned long TURNER_RUN_TIME = 10000UL;    // 10 seconds
 const unsigned long TURNER_INTERVAL = 14400000UL; // 4 hours
-const unsigned long DATA_SEND_INTERVAL = 5000UL; // 5 seconds
+const unsigned long DATA_SEND_INTERVAL = 5000UL;  // 5 seconds
 
 // ============== VARIABLES ==============
 float temperature = 0;
@@ -71,7 +69,7 @@ bool wifiConnected = false;
 // ============== SETUP ==============
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n\n=== EggWatch Pro v2 Starting ===");
+  Serial.println("\n=== EggWatch Pro Starting ===");
   
   // Initialize pins
   pinMode(HEATER_PIN, OUTPUT);
@@ -81,15 +79,15 @@ void setup() {
   
   // Initial states (ACTIVE-LOW relays)
   digitalWrite(HEATER_PIN, LOW);   // Heater ON
-  digitalWrite(TURNER_PIN, HIGH);   // Turner OFF
-  digitalWrite(FAN_PIN, HIGH);      // Fan OFF
+  digitalWrite(TURNER_PIN, HIGH);  // Turner OFF
+  digitalWrite(FAN_PIN, HIGH);     // Fan OFF
   digitalWrite(LED_PIN, LOW);       // LED OFF
   
   // Initialize I2C for AHT30
   Wire.begin(21, 22);  // SDA=21, SCL=22
    
   // Reset AHT30
- delay(100);
+  delay(100);
   Wire.beginTransmission(AHT30_ADDR);
   Wire.write(AHT30_CMD_RESET);
   Wire.endTransmission();
@@ -117,7 +115,7 @@ void loop() {
     lastSensorRead = millis();
   }
   
-  // Send data to server
+  // Send data to server every 5 seconds
   if (millis() - lastDataSend > DATA_SEND_INTERVAL) {
     sendDataToServer();
     lastDataSend = millis();
@@ -151,12 +149,12 @@ void connectWiFi() {
   
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
-    Serial.println("\n✓ WiFi Connected!");
+    Serial.println("\nWiFi Connected!");
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
     digitalWrite(LED_PIN, HIGH);  // LED ON when connected
   } else {
-    Serial.println("\n✗ WiFi Failed!");
+    Serial.println("\nWiFi Failed!");
   }
 }
 
@@ -198,7 +196,7 @@ void readAHT30() {
   temperature = (tempRaw * 200.0f / 1048576.0f) - 50.0f;
   
   // Debug output
-  Serial.printf("[Sensor] Temp: %.1f°C | Hum: %.1f%%\n", temperature, humidity);
+  Serial.printf("Temp: %.1fC | Hum: %.1f%%\n", temperature, humidity);
 }
 
 // ============== HEATER CONTROL ==============
@@ -263,8 +261,8 @@ void sendDataToServer() {
   
   HTTPClient http;
   
-  String url = String(serverUrl) + "/data.php";
-  Serial.println("[Server] Sending data to: " + url);
+  String url = String(serverUrl) + "/data";
+  Serial.println("[Server] Sending data...");
   
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
@@ -322,7 +320,7 @@ void serialEvent() {
     
     if (cmd == "STATUS") {
       Serial.println("\n=== EggWatch Status ===");
-      Serial.printf("Temperature: %.1f°C\n", temperature);
+      Serial.printf("Temperature: %.1fC\n", temperature);
       Serial.printf("Humidity: %.1f%%\n", humidity);
       Serial.printf("Heater: %s\n", heaterOn ? "ON" : "OFF");
       Serial.printf("Fan: %s\n", fanOn ? "ON" : "OFF");
