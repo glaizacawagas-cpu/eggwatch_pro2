@@ -1,7 +1,7 @@
 <?php
 /**
- * EggWatch Pro - Vercel Serverless Function
- * Handles all API routes
+ * EggWatch Pro - Vercel Serverless API
+ * Handles all API endpoints for ESP32 communication
  */
 
 header('Access-Control-Allow-Origin: *');
@@ -18,8 +18,7 @@ $uri = $_SERVER['REQUEST_URI'];
 $path = parse_url($uri, PHP_URL_PATH);
 $path = str_replace('/api/', '', $path);
 
-// Simple database (using JSON file for Vercel compatibility)
-// In production, use a proper database service
+// Simple JSON file database
 $dbFile = __DIR__ . '/../data/db.json';
 
 // Ensure data directory exists
@@ -56,27 +55,80 @@ switch ($path) {
     case 'status':
         header('Content-Type: application/json');
         $readings = $db['sensor_readings'] ?? [];
+        
         if (empty($readings)) {
+            // Return default values if no data
             echo json_encode([
-                'temperature' => 37.5,
-                'humidity' => 57.0,
+                'temperature' => 0,
+                'humidity' => 0,
                 'motorRunning' => false,
                 'fanRunning' => false,
-                'heaterRunning' => true,
+                'heaterRunning' => false,
                 'turnsToday' => 0,
                 'uptime' => 0,
-                'firmware' => 'v2.1.4',
-                'timestamp' => date('c')
+                'firmware' => 'v2.0',
+                'timestamp' => date('c'),
+                'connected' => false
             ]);
         } else {
             $latest = end($readings);
+            $latest['connected'] = true;
             echo json_encode($latest);
+        }
+        break;
+        
+    case 'ping':
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'firmware' => 'v2.0',
+            'timestamp' => date('c')
+        ]);
+        break;
+        
+    case 'data':
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $input = getJsonInput();
+            
+            if ($input) {
+                $reading = [
+                    'temperature' => floatval($input['temperature'] ?? 0),
+                    'humidity' => floatval($input['humidity'] ?? 0),
+                    'motorRunning' => boolval($input['motorRunning'] ?? false),
+                    'fanRunning' => boolval($input['fanRunning'] ?? false),
+                    'heaterRunning' => boolval($input['heaterRunning'] ?? false),
+                    'turnsToday' => intval($input['turnsToday'] ?? 0),
+                    'uptime' => intval($input['uptime'] ?? 0),
+                    'firmware' => $input['firmware'] ?? 'v2.0',
+                    'device' => $input['device'] ?? 'ESP32',
+                    'timestamp' => date('c')
+                ];
+                
+                // Add to readings array
+                $db['sensor_readings'][] = $reading;
+                
+                // Keep only last 1000 readings
+                if (count($db['sensor_readings']) > 1000) {
+                    $db['sensor_readings'] = array_slice($db['sensor_readings'], -1000);
+                }
+                
+                saveDb($db);
+                
+                header('Content-Type: application/json');
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Data received'
+                ]);
+            } else {
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'No data received']);
+            }
         }
         break;
         
     case 'logs':
         header('Content-Type: application/json');
-        $limit = $_GET['limit'] ?? 20;
+        $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 20;
         $readings = array_slice($db['sensor_readings'] ?? [], -$limit);
         echo json_encode(array_reverse($readings));
         break;
@@ -89,46 +141,16 @@ switch ($path) {
         
     case 'chart':
         header('Content-Type: application/json');
-        $readings = $db['sensor_readings'] ?? [];
-        echo json_encode(array_slice(array_reverse($readings), -100));
-        break;
-        
-    case 'ping':
-        header('Content-Type: application/json');
-        echo json_encode(['success' => true, 'firmware' => 'v2.1.4']);
-        break;
-        
-    case 'data':
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $input = getJsonInput();
-            $reading = [
-                'temperature' => $input['temperature'] ?? 37.5,
-                'humidity' => $input['humidity'] ?? 57.0,
-                'motorRunning' => $input['motorRunning'] ?? false,
-                'fanRunning' => $input['fanRunning'] ?? false,
-                'heaterRunning' => $input['heaterRunning'] ?? true,
-                'turnsToday' => $input['turnsToday'] ?? 0,
-                'uptime' => $input['uptime'] ?? 0,
-                'firmware' => $input['firmware'] ?? 'v2.1.4',
-                'timestamp' => date('c')
-            ];
-            $db['sensor_readings'][] = $reading;
-            // Keep only last 1000 readings
-            if (count($db['sensor_readings']) > 1000) {
-                $db['sensor_readings'] = array_slice($db['sensor_readings'], -1000);
-            }
-            saveDb($db);
-            header('Content-Type: application/json');
-            echo json_encode(['success' => true]);
-        }
+        $readings = array_slice($db['sensor_readings'] ?? [], -100);
+        echo json_encode(array_reverse($readings));
         break;
         
     case 'fan':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $input = getJsonInput();
-            $state = $input['state'] ?? false;
+            $state = isset($input['state']) ? boolval($input['state']) : false;
             
-            // Get latest reading and update fan state
+            // Update latest reading with fan state
             $readings = &$db['sensor_readings'];
             if (!empty($readings)) {
                 $latest = &$readings[count($readings) - 1];
@@ -136,18 +158,19 @@ switch ($path) {
                 $latest['timestamp'] = date('c');
             } else {
                 $readings[] = [
-                    'temperature' => 37.5,
-                    'humidity' => 57.0,
+                    'temperature' => 0,
+                    'humidity' => 0,
                     'motorRunning' => false,
                     'fanRunning' => $state,
-                    'heaterRunning' => true,
+                    'heaterRunning' => false,
                     'turnsToday' => 0,
                     'uptime' => 0,
-                    'firmware' => 'v2.1.4',
+                    'firmware' => 'v2.0',
                     'timestamp' => date('c')
                 ];
             }
             saveDb($db);
+            
             header('Content-Type: application/json');
             echo json_encode([
                 'success' => true,
@@ -167,18 +190,21 @@ switch ($path) {
                 $latest['timestamp'] = date('c');
                 saveDb($db);
             }
+            
             header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'message' => 'Manual turn triggered']);
+            echo json_encode([
+                'success' => true,
+                'message' => 'Manual turn triggered'
+            ]);
         }
         break;
         
     case 'schedule':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $input = getJsonInput();
-            $turnsPerDay = $input['turnsPerDay'] ?? 8;
-            $intervalHours = $input['intervalHours'] ?? 3;
+            $turnsPerDay = intval($input['turnsPerDay'] ?? 8);
+            $intervalHours = floatval($input['intervalHours'] ?? 3);
             
-            // Calculate schedule times
             $times = [];
             $start = new DateTime('00:00:00');
             for ($i = 0; $i < $turnsPerDay; $i++) {
@@ -186,10 +212,8 @@ switch ($path) {
                 $start->modify("+{$intervalHours} hours");
             }
             
-            // Deactivate old schedules
             foreach ($db['schedules'] as &$s) { $s['is_active'] = false; }
             
-            // Add new schedule
             $db['schedules'][] = [
                 'turns_per_day' => $turnsPerDay,
                 'interval_hours' => $intervalHours,
@@ -199,7 +223,10 @@ switch ($path) {
             saveDb($db);
             
             header('Content-Type: application/json');
-            echo json_encode(['success' => true, 'schedule' => $times]);
+            echo json_encode([
+                'success' => true,
+                'schedule' => $times
+            ]);
         }
         break;
         
@@ -207,19 +234,28 @@ switch ($path) {
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $input = getJsonInput();
             $db['thresholds'][] = [
-                'temp_min' => $input['tempMin'] ?? 36.0,
-                'temp_max' => $input['tempMax'] ?? 38.5,
-                'hum_min' => $input['humMin'] ?? 50.0,
-                'hum_max' => $input['humMax'] ?? 65.0
+                'temp_min' => floatval($input['tempMin'] ?? 36.0),
+                'temp_max' => floatval($input['tempMax'] ?? 38.5),
+                'hum_min' => floatval($input['humMin'] ?? 50.0),
+                'hum_max' => floatval($input['humMax'] ?? 65.0)
             ];
             saveDb($db);
+            
             header('Content-Type: application/json');
             echo json_encode(['success' => true]);
         }
         break;
         
     default:
-        http_response_code(404);
         header('Content-Type: application/json');
-        echo json_encode(['error' => 'Not found']);
+        echo json_encode([
+            'error' => 'Not found',
+            'endpoints' => [
+                'GET /api/status' => 'Get current readings',
+                'GET /api/ping' => 'Test connection',
+                'POST /api/data' => 'Send sensor data',
+                'POST /api/fan' => 'Control fan',
+                'POST /api/turn' => 'Trigger turn'
+            ]
+        ]);
 }
