@@ -6,19 +6,16 @@
 
 const API = (() => {
   // ── Configuration ──────────────────────────────────────────
-  // Auto-detect environment: Vercel (production) vs local development
-  const isVercel = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  // For local server: use localhost:3000
+  // For ESP32 direct: use 192.168.1.100
   
   let config = {
-    // For local XAMPP development: use localhost with PHP
-    // For Vercel: use relative API calls (same domain)
-    // For ESP32 direct: use 192.168.1.100
-    ip:           localStorage.getItem('esp32_ip')   || '192.168.1.100',
-    port:         localStorage.getItem('esp32_port') || '80',
+    ip:           localStorage.getItem('esp32_ip')   || 'localhost',
+    port:         localStorage.getItem('esp32_port') || '3000',
     pollInterval: parseInt(localStorage.getItem('poll_interval') || '5', 10),
-    // Try ESP32 first, fall back to demo mode if not connected
-    demoMode:     false,   // Try real ESP32 first
-    useLocalApi:  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
+    // Use real API, not demo mode
+    demoMode:     false,
+    useLocalApi:  true,
   };
 
   let pollTimer    = null;
