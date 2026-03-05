@@ -6,11 +6,19 @@
 
 const API = (() => {
   // ── Configuration ──────────────────────────────────────────
+  // Auto-detect environment: Vercel (production) vs local development
+  const isVercel = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+  
   let config = {
+    // For local XAMPP development: use localhost with PHP
+    // For Vercel: use relative API calls (same domain)
+    // For ESP32 direct: use 192.168.1.100
     ip:           localStorage.getItem('esp32_ip')   || '192.168.1.100',
     port:         localStorage.getItem('esp32_port') || '80',
     pollInterval: parseInt(localStorage.getItem('poll_interval') || '5', 10),
-    demoMode:     false,   // Set to false when real ESP32 is connected
+    // Default to demo mode for safety; set to false when ready for production
+    demoMode:     true,   // Set to false when ESP32 or Vercel is connected
+    useLocalApi:  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
   };
 
   let pollTimer    = null;
@@ -96,6 +104,11 @@ const API = (() => {
 
   // ── Helpers ────────────────────────────────────────────────
   function baseUrl() {
+    // For Vercel (production) or local XAMPP: use relative path
+    if (config.useLocalApi || isVercel) {
+      return '';  // Relative API calls
+    }
+    // For ESP32 direct connection
     return `http://${config.ip}:${config.port}`;
   }
 
