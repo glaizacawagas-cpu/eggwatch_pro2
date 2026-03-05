@@ -1,406 +1,300 @@
 /*
  * ============================================================
- *  Egg Incubator Controller - Web App Integrated Version
- *  Hardware : ESP32
- *  Sensor   : AHT30 (I2C — SDA=21, SCL=22)
- *  Outputs  : Heater relay (pin 18, ACTIVE-LOW)
- *             Egg-turner relay (pin  5, ACTIVE-LOW)
- *             Fan relay       (pin 17, ACTIVE-LOW)
+ *  EggWatch Pro - ESP32 Firmware
+ *  For Vercel/Local Web App Integration
+ * ============================================================
+ *  Hardware: ESP32
+ *  Sensor: AHT30 (I2C - SDA=21, SCL=22)
+ *  Outputs: Heater (18), Egg Turner (5), Fan (17)
  * ============================================================
  */
 
-#include <Wire.h>
 #include <WiFi.h>
-#include <WebServer.h>
+#include <HTTPClient.h>
+#include <Wire.h>
 #include <ArduinoJson.h>
 
-// ── WiFi Configuration ────────────────────────────────────────
-const char* ssid     = "YOUR_WIFI_SSID";          // Change to your WiFi
-const char* password = "YOUR_WIFI_PASSWORD";      // Change to your password
-const char* hostname = "EggWatch-Pro";
+// ============== CONFIGURATION ==============
+// WiFi Settings
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-// ── Web Server ────────────────────────────────────────────────
-WebServer server(80);
-
-// ── Pin definitions ────────────────────────────────────────────
-#define HEATER_RELAY_PIN   18
-#define TURNER_RELAY_PIN    5
-#define FAN_RELAY_PIN      17
-
-// ── AHT30 ────────────────────────────────────────────────────
-#define AHT30_ADDR         0x38
-#define AHT30_CMD_RESET    0xBA
-#define AHT30_CMD_TRIGGER  0xAC
-
-// ── Temperature thresholds (°C) ────────────────────────────────
-const float TEMP_HEATER_ON  = 36.5f;
-const float TEMP_HEATER_OFF = 37.0f;
-
-// ── Fan thresholds (°C) ────────────────────────────────────────
-const float TEMP_FAN_ON  = 37.5f;
-const float TEMP_FAN_OFF = 37.0f;
-
-// ── Egg-turner timing ─────────────────────────────────────────
-const unsigned long TURNER_ON_MS      = 10UL * 1000UL;          // 10 s ON
-const unsigned long TURNER_OFF_MS_DEF =  4UL * 60UL * 1000UL;   // 4 min OFF
-
-// ── Sensor polling interval ────────────────────────────────────
-const unsigned long SENSOR_INTERVAL_MS = 1000UL;
-const unsigned long SERVER_INTERVAL_MS = 100UL;
-
-// ── State variables ────────────────────────────────────────────
-bool heaterOn = true;
-bool fanOn    = false;
-
-unsigned long offDuration       = TURNER_OFF_MS_DEF;
-unsigned long lastTurnerChange  = 0;
-bool          turnerOn          = false;
-
-unsigned long lastSensorRead    = 0;
-unsigned long lastServerHandle  = 0;
-
-// ── Sensor readings ────────────────────────────────────────────
-float currentTemp = 0;
-float currentHum = 0;
-unsigned long uptime = 0;
-int turnsToday = 0;
-
-// ── Fan control ────────────────────────────────────────────────
-bool fanForced = false;
-
-// ── Server URL for database ────────────────────────────────────
+// Server URL (change after deploying to Vercel)
+// Example: "https://your-app.vercel.app/api"
+// Or local: "http://192.168.1.100/eggwatch_pro/api"
 const char* serverUrl = "http://192.168.1.100/eggwatch_pro/api";
 
-// ================================================================
-//  SETUP
-// ================================================================
+// ============== PINS ==============
+#define HEATER_PIN   18
+#define TURNER_PIN    5
+#define FAN_PIN      17
+#define AHT30_ADDR   0x38
+#define AHT30_CMD_TRIGGER 0xAC
+
+// ============== THRESHOLDS ==============
+const float TEMP_HEATER_ON  = 36.5f;
+const float TEMP_HEATER_OFF = 37.0f;
+const float TEMP_FAN_ON    = 37.5f;
+const float TEMP_FAN_OFF    = 37.0f;
+const unsigned long TURNER_ON_TIME = 10000UL;  // 10 seconds
+const unsigned long TURNER_INTERVAL = 14400000UL; // 4 hours
+
+// ============== VARIABLES ==============
+float temperature = 37.0f;
+float humidity = 55.0f;
+bool heaterOn = true;
+bool fanOn = false;
+bool turnerOn = false;
+int turnsToday = 0;
+unsigned long lastTurnerTime = 0;
+unsigned long lastSensorRead = 0;
+unsigned long lastDataSend = 0;
+unsigned long uptime = 0;
+unsigned long startTime = 0;
+bool fanForced = false;
+
+// ============== SETUP ==============
 void setup() {
   Serial.begin(115200);
-  Wire.begin(21, 22);   // SDA, SCL
+  Wire.begin(21, 22); // SDA, SCL
   delay(100);
 
-  // AHT30 soft reset
+  // Initialize pins
+  pinMode(HEATER_PIN, OUTPUT);
+  pinMode(TURNER_PIN, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
+
+  // Initial states (ACTIVE-LOW relays)
+  digitalWrite(HEATER_PIN, LOW);  // Heater ON
+  digitalWrite(TURNER_PIN, HIGH); // Turner OFF
+  digitalWrite(FAN_PIN, HIGH);    // Fan OFF
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+
+  // AHT30 reset
   Wire.beginTransmission(AHT30_ADDR);
-  Wire.write(AHT30_CMD_RESET);
+  Wire.write(0xBA);
   Wire.endTransmission();
   delay(100);
 
-  // Relay pins — all outputs
-  pinMode(HEATER_RELAY_PIN, OUTPUT);
-  pinMode(TURNER_RELAY_PIN, OUTPUT);
-  pinMode(FAN_RELAY_PIN,    OUTPUT);
-
-  // Initial states
-  digitalWrite(HEATER_RELAY_PIN, LOW);    // Heater ON (ACTIVE-LOW)
-  digitalWrite(TURNER_RELAY_PIN, HIGH);   // Turner OFF
-  digitalWrite(FAN_RELAY_PIN,    HIGH);   // Fan OFF
-
-  // Connect to WiFi
-  connectWiFi();
-
-  // Setup web server routes
-  setupServerRoutes();
-
-  uptime = millis() / 1000;
-
-  Serial.println(F("\n=== Egg Incubator Controller Ready ==="));
-  Serial.print(F("IP Address: "));
-  Serial.println(WiFi.localIP());
-  Serial.println(F("\nWeb Server Endpoints:"));
-  Serial.println(F("  GET  /           - Status page"));
-  Serial.println(F("  GET  /api/status - JSON status"));
-  Serial.println(F("  POST /api/fan    - Toggle fan"));
-  Serial.println(F("  POST /api/turn  - Trigger turn"));
-  Serial.println(F("  POST /api/schedule - Set schedule"));
-  Serial.println();
+  startTime = millis();
+  Serial.println("=== EggWatch Pro Ready ===");
 }
 
-// ================================================================
-//  LOOP
-// ================================================================
+// ============== LOOP ==============
 void loop() {
-  // Handle web server
-  if (millis() - lastServerHandle > SERVER_INTERVAL_MS) {
-    server.handleClient();
-    lastServerHandle = millis();
-  }
-
-  // Temperature control
-  handleTemperatureControl();
-  
-  // Egg turner
-  handleEggTurner();
-  
   // Update uptime
-  uptime = millis() / 1000;
-}
+  uptime = (millis() - startTime) / 1000;
 
-// ================================================================
-//  WiFi Connection
-// ================================================================
-void connectWiFi() {
-  Serial.print(F("Connecting to WiFi..."));
-  WiFi.begin(ssid, password);
-  WiFi.setHostname(hostname);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(F("."));
-    attempts++;
+  // Read sensors every second
+  if (millis() - lastSensorRead > 1000) {
+    readAHT30();
+    controlHeater();
+    controlFan();
+    controlTurner();
+    lastSensorRead = millis();
   }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println(F("Connected!"));
-  } else {
-    Serial.println(F("Failed!"));
+
+  // Send data to server every 5 seconds
+  if (millis() - lastDataSend > 5000) {
+    sendDataToServer();
+    lastDataSend = millis();
   }
+
+  delay(100);
 }
 
-// ================================================================
-//  Web Server Routes
-// ================================================================
-void setupServerRoutes() {
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/api/status", HTTP_GET, handleStatus);
-  server.on("/api/ping", HTTP_GET, handlePing);
-  server.on("/api/fan", HTTP_POST, handleFan);
-  server.on("/api/turn", HTTP_POST, handleTurn);
-  server.on("/api/schedule", HTTP_POST, handleSchedule);
-  server.on("/api/thresholds", HTTP_POST, handleThresholds);
-  
-  server.onNotFound([]() {
-    server.send(404, "application/json", "{\"error\":\"Not found\"}");
-  });
-}
-
-// ── Root page ─────────────────────────────────────────────────
-void handleRoot() {
-  String html = "<html><head><title>EggWatch Pro</title>";
-  html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  html += "<style>body{font-family:Arial;margin:20px;background:#f0f0f0;}";
-  html += ".card{background:white;padding:20px;margin:10px 0;border-radius:10px;}";
-  html += "h1{color:#333;}.status{font-size:24px;margin:10px 0;}";
-  html += ".on{color:green;}.off{color:red;}</style></head>";
-  html += "<body><h1>🥚 EggWatch Pro ESP32</h1>";
-  html += "<div class='card'><h2>Sensors</h2>";
-  html += "<p>Temperature: <strong>" + String(currentTemp, 1) + "°C</strong></p>";
-  html += "<p>Humidity: <strong>" + String(currentHum, 1) + "%</strong></p></div>";
-  html += "<div class='card'><h2>Status</h2>";
-  html += "<p>Heater: <span class='" + String(heaterOn ? "on" : "off") + "'>" + String(heaterOn ? "ON" : "OFF") + "</span></p>";
-  html += "<p>Fan: <span class='" + String(fanOn ? "on" : "off") + "'>" + String(fanOn ? "ON" : "OFF") + "</span></p>";
-  html += "<p>Egg Turner: <span class='" + String(turnerOn ? "on" : "off") + "'>" + String(turnerOn ? "ON" : "OFF") + "</span></p>";
-  html += "<p>Turns Today: <strong>" + String(turnsToday) + "</strong></p>";
-  html += "<p>Uptime: <strong>" + String(uptime) + "</strong> seconds</p></div>";
-  html += "<div class='card'><h2>API</h2>";
-  html += "<p><a href='/api/status'>/api/status</a></p></div>";
-  html += "</body></html>";
-  
-  server.send(200, "text/html", html);
-}
-
-// ── JSON Status ────────────────────────────────────────────────
-void handleStatus() {
-  StaticJsonDocument<512> doc;
-  
-  doc["temperature"] = currentTemp;
-  doc["humidity"] = currentHum;
-  doc["motorRunning"] = turnerOn;
-  doc["fanRunning"] = fanOn;
-  doc["heaterRunning"] = heaterOn;
-  doc["turnsToday"] = turnsToday;
-  doc["nextTurnMs"] = offDuration;
-  doc["uptime"] = uptime;
-  doc["firmware"] = "v2.1.4-esp32";
-  doc["timestamp"] = "";
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// ── Ping ─────────────────────────────────────────────────────
-void handlePing() {
-  StaticJsonDocument<128> doc;
-  doc["success"] = true;
-  doc["firmware"] = "v2.1.4-esp32";
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// ── Fan Control ────────────────────────────────────────────────
-void handleFan() {
-  if (server.hasArg("plain")) {
-    String body = server.arg("plain");
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, body);
-    
-    if (!error) {
-      bool state = doc["state"] | false;
-      
-      if (state) {
-        fanForced = true;
-        digitalWrite(FAN_RELAY_PIN, LOW);  // ACTIVE-LOW → ON
-        fanOn = true;
-      } else {
-        fanForced = false;
-        // Fan will return to auto control in next loop
-      }
-      
-      StaticJsonDocument<128> responseDoc;
-      responseDoc["success"] = true;
-      responseDoc["fanRunning"] = fanOn;
-      responseDoc["message"] = fanOn ? "Fan turned ON" : "Fan turned OFF";
-      
-      String response;
-      serializeJson(responseDoc, response);
-      server.send(200, "application/json", response);
-      return;
-    }
-  }
-  server.send(400, "application/json", "{\"error\":\"Invalid request\"}");
-}
-
-// ── Manual Turn ───────────────────────────────────────────────
-void handleTurn() {
-  if (!turnerOn) {
-    // Trigger immediate turn
-    digitalWrite(TURNER_RELAY_PIN, LOW);  // ON
-    turnerOn = true;
-    lastTurnerChange = millis();
-    turnsToday++;
-  }
-  
-  StaticJsonDocument<128> doc;
-  doc["success"] = true;
-  doc["message"] = "Manual turn triggered";
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// ── Set Schedule ──────────────────────────────────────────────
-void handleSchedule() {
-  if (server.hasArg("plain")) {
-    String body = server.arg("plain");
-    StaticJsonDocument<256> doc;
-    DeserializationError error = deserializeJson(doc, body);
-    
-    if (!error) {
-      int tpd = doc["turnsPerDay"] | 8;
-      float ih = doc["intervalHours"] | 3.0;
-      
-      offDuration = (unsigned long)(ih * 60.0 * 60.0 * 1000.0);
-      
-      StaticJsonDocument<128> responseDoc;
-      responseDoc["success"] = true;
-      
-      String response;
-      serializeJson(responseDoc, response);
-      server.send(200, "application/json", response);
-      return;
-    }
-  }
-  server.send(400, "application/json", "{\"error\":\"Invalid request\"}");
-}
-
-// ── Set Thresholds ────────────────────────────────────────────
-void handleThresholds() {
-  // Thresholds are handled locally, but we acknowledge the request
-  StaticJsonDocument<128> doc;
-  doc["success"] = true;
-  
-  String response;
-  serializeJson(doc, response);
-  server.send(200, "application/json", response);
-}
-
-// ================================================================
-//  Temperature Control (AHT30)
-// ================================================================
-void handleTemperatureControl() {
-  if (millis() - lastSensorRead < SENSOR_INTERVAL_MS) return;
-  lastSensorRead = millis();
-
-  // Trigger measurement
+// ============== AHT30 SENSOR ==============
+void readAHT30() {
   Wire.beginTransmission(AHT30_ADDR);
   Wire.write(AHT30_CMD_TRIGGER);
   Wire.write(0x33);
   Wire.write(0x00);
   if (Wire.endTransmission() != 0) {
-    Serial.println(F("[AHT30] ERROR: Trigger failed"));
+    Serial.println("[AHT30] Error");
     return;
   }
-
+  
   delay(80);
-
+  
   if (Wire.requestFrom(AHT30_ADDR, 6) != 6) {
-    Serial.println(F("[AHT30] ERROR: Read failed"));
+    Serial.println("[AHT30] Read error");
     return;
   }
 
   uint8_t data[6];
   for (int i = 0; i < 6; i++) data[i] = Wire.read();
 
-  if (data[0] & 0x80) {
-    return;
-  }
+  if (data[0] & 0x80) return;
 
   uint32_t hum_raw = ((uint32_t)data[1] << 12) | ((uint32_t)data[2] << 4) | ((data[3] & 0xF0) >> 4);
   uint32_t temp_raw = ((uint32_t)(data[3] & 0x0F) << 16) | ((uint32_t)data[4] << 8) | data[5];
 
-  currentHum = (hum_raw * 100.0f) / 1048576.0f;
-  currentTemp = (temp_raw * 200.0f / 1048576.0f) - 50.0f;
+  humidity = (hum_raw * 100.0f) / 1048576.0f;
+  temperature = (temp_raw * 200.0f / 1048576.0f) - 50.0f;
 
-  // ── Heater hysteresis ────────────────────────────────────────
-  if (heaterOn && currentTemp >= TEMP_HEATER_OFF) {
-    digitalWrite(HEATER_RELAY_PIN, HIGH);   // OFF
-    heaterOn = false;
-  } else if (!heaterOn && currentTemp <= TEMP_HEATER_ON) {
-    digitalWrite(HEATER_RELAY_PIN, LOW);    // ON
-    heaterOn = true;
-  }
-
-  // ── Fan hysteresis (only when not forced) ──────────────────
-  if (!fanForced) {
-    if (!fanOn && currentTemp >= TEMP_FAN_ON) {
-      digitalWrite(FAN_RELAY_PIN, LOW);      // ON
-      fanOn = true;
-    } else if (fanOn && currentTemp <= TEMP_FAN_OFF) {
-      digitalWrite(FAN_RELAY_PIN, HIGH);     // OFF
-      fanOn = false;
-    }
-  }
-
-  // ── Status print ───────────────────────────────────────────
-  Serial.print(F("Temp: "));    Serial.print(currentTemp, 2); Serial.print(F("C"));
-  Serial.print(F(" | Hum: "));  Serial.print(currentHum, 1);  Serial.print(F("%"));
-  Serial.print(F(" | H: "));   Serial.print(heaterOn ? F("ON") : F("OFF"));
-  Serial.print(F(" | F: "));   Serial.print(fanOn ? F("ON") : F("OFF"));
-  Serial.print(fanForced ? F("(f)") : F("(a)"));
-  Serial.print(F(" | T: "));   Serial.println(turnerOn ? F("ON") : F("OFF"));
+  Serial.printf("Temp: %.1f°C | Hum: %.1f%%\n", temperature, humidity);
 }
 
-// ================================================================
-//  Egg Turner Control
-// ================================================================
-void handleEggTurner() {
+// ============== HEATER CONTROL ==============
+void controlHeater() {
+  if (heaterOn && temperature >= TEMP_HEATER_OFF) {
+    digitalWrite(HEATER_PIN, HIGH); // OFF
+    heaterOn = false;
+    Serial.println("[Heater] OFF");
+  } else if (!heaterOn && temperature <= TEMP_HEATER_ON) {
+    digitalWrite(HEATER_PIN, LOW); // ON
+    heaterOn = true;
+    Serial.println("[Heater] ON");
+  }
+}
+
+// ============== FAN CONTROL ==============
+void controlFan() {
+  if (fanForced) return; // Manual control active
+
+  if (!fanOn && temperature >= TEMP_FAN_ON) {
+    digitalWrite(FAN_PIN, LOW); // ON
+    fanOn = true;
+    Serial.println("[Fan] ON");
+  } else if (fanOn && temperature <= TEMP_FAN_OFF) {
+    digitalWrite(FAN_PIN, HIGH); // OFF
+    fanOn = false;
+    Serial.println("[Fan] OFF");
+  }
+}
+
+// ============== EGG TURNER CONTROL ==============
+void controlTurner() {
   unsigned long now = millis();
 
-  if (!turnerOn && (now - lastTurnerChange >= offDuration)) {
-    digitalWrite(TURNER_RELAY_PIN, LOW);   // ON
+  // Auto turn every interval
+  if (!turnerOn && (now - lastTurnerTime >= TURNER_INTERVAL)) {
+    digitalWrite(TURNER_PIN, LOW); // ON
     turnerOn = true;
-    lastTurnerChange = now;
-    Serial.println(F("[Turner] ON"));
+    lastTurnerTime = now;
+    turnsToday++;
+    Serial.println("[Turner] ON - Eggs turning");
   }
 
-  if (turnerOn && (now - lastTurnerChange >= TURNER_ON_MS)) {
-    digitalWrite(TURNER_RELAY_PIN, HIGH);  // OFF
+  // Turn off after time
+  if (turnerOn && (now - lastTurnerTime >= TURNER_ON_TIME)) {
+    digitalWrite(TURNER_PIN, HIGH); // OFF
     turnerOn = false;
-    lastTurnerChange = now;
-    Serial.println(F("[Turner] OFF"));
+    Serial.println("[Turner] OFF");
+  }
+}
+
+// ============== SEND DATA TO SERVER ==============
+void sendDataToServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.reconnect();
+    return;
+  }
+
+  HTTPClient http;
+  String url = String(serverUrl) + "/data.php";
+
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<256> doc;
+  doc["temperature"] = temperature;
+  doc["humidity"] = humidity;
+  doc["motorRunning"] = turnerOn;
+  doc["fanRunning"] = fanOn;
+  doc["heaterRunning"] = heaterOn;
+  doc["turnsToday"] = turnsToday;
+  doc["uptime"] = uptime;
+  doc["firmware"] = "v2.1.4";
+
+  String jsonStr;
+  serializeJson(doc, jsonStr);
+
+  int httpCode = http.POST(jsonStr);
+
+  if (httpCode > 0) {
+    String response = http.getString();
+    Serial.printf("[Server] Response: %d\n", httpCode);
+    
+    // Check for commands from server
+    StaticJsonDocument<512> responseDoc;
+    DeserializationError error = deserializeJson(responseDoc, response);
+    
+    if (!error) {
+      // Handle fan command
+      if (responseDoc.containsKey("fanRunning")) {
+        bool serverFan = responseDoc["fanRunning"];
+        if (serverFan != fanOn) {
+          fanForced = true;
+          digitalWrite(FAN_PIN, serverFan ? LOW : HIGH);
+          fanOn = serverFan;
+          Serial.printf("[Fan] Set to: %s\n", serverFan ? "ON" : "OFF");
+        }
+      }
+      
+      // Handle turn command
+      if (responseDoc.containsKey("triggerTurn") && responseDoc["triggerTurn"]) {
+        if (!turnerOn) {
+          digitalWrite(TURNER_PIN, LOW);
+          turnerOn = true;
+          lastTurnerTime = millis();
+          turnsToday++;
+          Serial.println("[Turner] Manual trigger");
+        }
+      }
+    }
+  } else {
+    Serial.printf("[Server] Error: %d\n", httpCode);
+  }
+
+  http.end();
+}
+
+// ============== MANUAL FAN CONTROL ==============
+// Add serial commands for testing
+void serialEvent() {
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    cmd.toUpperCase();
+
+    if (cmd == "FAN ON") {
+      fanForced = true;
+      digitalWrite(FAN_PIN, LOW);
+      fanOn = true;
+      Serial.println("[Fan] Forced ON");
+    } else if (cmd == "FAN OFF") {
+      fanForced = false;
+      digitalWrite(FAN_PIN, HIGH);
+      fanOn = false;
+      Serial.println("[Fan] Forced OFF (auto)");
+    } else if (cmd == "TURN") {
+      if (!turnerOn) {
+        digitalWrite(TURNER_PIN, LOW);
+        turnerOn = true;
+        lastTurnerTime = millis();
+        turnsToday++;
+        Serial.println("[Turner] Manual trigger");
+      }
+    } else if (cmd == "STATUS") {
+      Serial.println("=== Status ===");
+      Serial.printf("Temp: %.1f°C\n", temperature);
+      Serial.printf("Humidity: %.1f%%\n", humidity);
+      Serial.printf("Heater: %s\n", heaterOn ? "ON" : "OFF");
+      Serial.printf("Fan: %s\n", fanOn ? "ON" : "OFF");
+      Serial.printf("Turner: %s\n", turnerOn ? "ON" : "OFF");
+      Serial.printf("Turns Today: %d\n", turnsToday);
+      Serial.printf("Uptime: %lu seconds\n", uptime);
+    }
   }
 }
