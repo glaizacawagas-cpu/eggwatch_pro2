@@ -16,8 +16,8 @@ const API = (() => {
     ip:           localStorage.getItem('esp32_ip')   || '192.168.1.100',
     port:         localStorage.getItem('esp32_port') || '80',
     pollInterval: parseInt(localStorage.getItem('poll_interval') || '5', 10),
-    // Default to demo mode for safety; set to false when ready for production
-    demoMode:     true,   // Set to false when ESP32 or Vercel is connected
+    // Try ESP32 first, fall back to demo mode if not connected
+    demoMode:     false,   // Try real ESP32 first
     useLocalApi:  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1',
   };
 
@@ -134,7 +134,12 @@ const API = (() => {
     if (config.demoMode) {
       return demo.generateReading();
     }
-    return fetchJson('/api/status');
+    try {
+      return await fetchJson('/api/status');
+    } catch (e) {
+      console.warn('ESP32 not connected, falling back to demo mode:', e.message);
+      return demo.generateReading();
+    }
   }
 
   /**
